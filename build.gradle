@@ -3,11 +3,11 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 apply plugin: 'maven'
 
-group = 'net.minecraftforge.gradle'
+group = 'ch.aaronschneider7797.forgegradle'
 version = '1.1-SNAPSHOT'
 archivesBaseName = 'ForgeGradle'
-targetCompatibility = '1.6'
-sourceCompatibility = '1.6'
+targetCompatibility = '1.8'
+sourceCompatibility = '1.8'
 
 repositories {
     maven {
@@ -54,74 +54,77 @@ dependencies {
     compile 'de.oceanlabs.mcp:RetroGuard:3.6.6'
     compile 'de.oceanlabs.mcp:mcinjector:3.2-SNAPSHOT'
 
+    // junit
+    compile 'junit:junit:4.13.2'
+
     // stupid maven
     deployerJars "org.apache.maven.wagon:wagon-ssh:2.2"
 }
 
 artifacts { archives jar }
 
-uploadArchives {
-    repositories {
-        if (project.hasProperty("filesmaven")) {
-            logger.info('Publishing to files server')
-
-            mavenDeployer {
-                configuration = configurations.deployerJars
-
-                repository(url: project.filesmaven.url) {
-                    authentication(userName: project.filesmaven.username, privateKey: project.filesmaven.key)
-                }
-
-                pom {
-                    groupId = project.group
-                    version = project.version
-                    artifactId = project.archivesBaseName
-                    project {
-                        name project.archivesBaseName
-                        packaging 'jar'
-                        description 'Gradle plugin for Forge'
-                        url 'https://github.com/MinecraftForge/ForgeGradle'
-
-                        scm {
-                            url 'https://github.com/MinecraftForge/ForgeGradle'
-                            connection 'scm:git:git://github.com/MinecraftForge/ForgeGradle.git'
-                            developerConnection 'scm:git:git@github.com:MinecraftForge/ForgeGradle.git'
-                        }
-
-                        issueManagement {
-                            system 'github'
-                            url 'https://github.com/MinecraftForge/ForgeGradle/issues'
-                        }
-
-                        licenses {
-                            license {
-                                name 'Eclipse Public License (EPL), Version 1.0'
-                                url 'http://www.eclipse.org/legal/epl-v10.html'
-                                distribution 'repo'
-                            }
-                        }
-
-                        developers {
-                            developer {
-                                id 'AbrarSyed'
-                                name 'Abrar Syed'
-                                roles { role 'developer' }
-                            }
-                        }
-                        developers {
-                            developer {
-                                id 'LexManos'
-                                name 'Lex Manos'
-                                roles { role 'developer' }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            add project.repositories.mavenLocal()
-        }
-    }
-}
+//uploadArchives {
+//    repositories {
+//        if (project.hasProperty("filesmaven")) {
+//            logger.info('Publishing to files server')
+//
+//            mavenDeployer {
+//                configuration = configurations.deployerJars
+//
+//                repository(url: project.filesmaven.url) {
+//                    authentication(userName: project.filesmaven.username, privateKey: project.filesmaven.key)
+//                }
+//
+//                pom {
+//                    groupId = project.group
+//                    version = project.version
+//                    artifactId = project.archivesBaseName
+//                    project {
+//                        name project.archivesBaseName
+//                        packaging 'jar'
+//                        description 'Gradle plugin for Forge'
+//                        url 'https://github.com/MinecraftForge/ForgeGradle'
+//
+//                        scm {
+//                            url 'https://github.com/MinecraftForge/ForgeGradle'
+//                            connection 'scm:git:git://github.com/MinecraftForge/ForgeGradle.git'
+//                            developerConnection 'scm:git:git@github.com:MinecraftForge/ForgeGradle.git'
+//                        }
+//
+//                        issueManagement {
+//                            system 'github'
+//                            url 'https://github.com/MinecraftForge/ForgeGradle/issues'
+//                        }
+//
+//                        licenses {
+//                            license {
+//                                name 'Eclipse Public License (EPL), Version 1.0'
+//                                url 'http://www.eclipse.org/legal/epl-v10.html'
+//                                distribution 'repo'
+//                            }
+//                        }
+//
+//                        developers {
+//                            developer {
+//                                id 'AbrarSyed'
+//                                name 'Abrar Syed'
+//                                roles { role 'developer' }
+//                            }
+//                        }
+//                        developers {
+//                            developer {
+//                                id 'LexManos'
+//                                name 'Lex Manos'
+//                                roles { role 'developer' }
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//        else
+//        {
+//            add project.repositories.mavenLocal()
+//        }
+//    }
+//}

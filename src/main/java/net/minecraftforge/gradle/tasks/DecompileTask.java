@@ -45,7 +45,7 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.internal.io.TextStream;
 import org.gradle.process.JavaExecSpec;
-import org.gradle.util.LineBufferingOutputStream;
+import org.gradle.internal.io.LineBufferingOutputStream;
 
 import argo.saj.InvalidSyntaxException;
 
