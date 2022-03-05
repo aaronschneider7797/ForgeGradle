@@ -4,7 +4,7 @@ apply plugin: 'eclipse'
 apply plugin: 'maven'
 
 group = 'ch.aaronschneider7797.forgegradle'
-version = '1.1-SNAPSHOT'
+version = '1.0-SNAPSHOT'
 archivesBaseName = 'ForgeGradle'
 targetCompatibility = '1.8'
 sourceCompatibility = '1.8'
@@ -13,10 +13,6 @@ repositories {
     maven {
         name = "forge"
         url = "http://files.minecraftforge.net/maven"
-    }
-    maven {
-        name = "sonatype"
-        url = "https://oss.sonatype.org/content/repositories/snapshots/"
     }
     mavenCentral()
 }
@@ -48,11 +44,11 @@ dependencies {
     compile 'com.google.code.gson:gson:2.2.4' // Used instead of Argo for buuilding changelog.
     compile 'com.github.tony19:named-regexp:0.2.3' // 1.7 Named regexp features
     
-    compile 'net.md-5:SpecialSource:1.7-SNAPSHOT' // deobf and reobs
+    compile 'net.md-5:SpecialSource:1.6.1' // deobf and reobs
     
     // mcp stuff
     compile 'de.oceanlabs.mcp:RetroGuard:3.6.6'
-    compile 'de.oceanlabs.mcp:mcinjector:3.2-SNAPSHOT'
+    compile 'de.oceanlabs.mcp:mcinjector:3.1'
 
     // junit
     compile 'junit:junit:4.13.2'
@@ -63,68 +59,68 @@ dependencies {
 
 artifacts { archives jar }
 
-//uploadArchives {
-//    repositories {
-//        if (project.hasProperty("filesmaven")) {
-//            logger.info('Publishing to files server')
-//
-//            mavenDeployer {
-//                configuration = configurations.deployerJars
-//
-//                repository(url: project.filesmaven.url) {
-//                    authentication(userName: project.filesmaven.username, privateKey: project.filesmaven.key)
-//                }
-//
-//                pom {
-//                    groupId = project.group
-//                    version = project.version
-//                    artifactId = project.archivesBaseName
-//                    project {
-//                        name project.archivesBaseName
-//                        packaging 'jar'
-//                        description 'Gradle plugin for Forge'
-//                        url 'https://github.com/MinecraftForge/ForgeGradle'
-//
-//                        scm {
-//                            url 'https://github.com/MinecraftForge/ForgeGradle'
-//                            connection 'scm:git:git://github.com/MinecraftForge/ForgeGradle.git'
-//                            developerConnection 'scm:git:git@github.com:MinecraftForge/ForgeGradle.git'
-//                        }
-//
-//                        issueManagement {
-//                            system 'github'
-//                            url 'https://github.com/MinecraftForge/ForgeGradle/issues'
-//                        }
-//
-//                        licenses {
-//                            license {
-//                                name 'Eclipse Public License (EPL), Version 1.0'
-//                                url 'http://www.eclipse.org/legal/epl-v10.html'
-//                                distribution 'repo'
-//                            }
-//                        }
-//
-//                        developers {
-//                            developer {
-//                                id 'AbrarSyed'
-//                                name 'Abrar Syed'
-//                                roles { role 'developer' }
-//                            }
-//                        }
-//                        developers {
-//                            developer {
-//                                id 'LexManos'
-//                                name 'Lex Manos'
-//                                roles { role 'developer' }
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//        else
-//        {
-//            add project.repositories.mavenLocal()
-//        }
-//    }
-//}
+uploadArchives {
+    repositories {
+        if (project.hasProperty("filesmaven")) {
+            logger.info('Publishing to files server')
+
+            mavenDeployer {
+                configuration = configurations.deployerJars
+
+                repository(url: project.filesmaven.url) {
+                    authentication(userName: project.filesmaven.username, privateKey: project.filesmaven.key)
+                }
+
+                pom {
+                    groupId = project.group
+                    version = project.version
+                    artifactId = project.archivesBaseName
+                    project {
+                        name project.archivesBaseName
+                        packaging 'jar'
+                        description 'Gradle plugin for Forge'
+                        url 'https://github.com/MinecraftForge/ForgeGradle'
+
+                        scm {
+                            url 'https://github.com/MinecraftForge/ForgeGradle'
+                            connection 'scm:git:git://github.com/MinecraftForge/ForgeGradle.git'
+                            developerConnection 'scm:git:git@github.com:MinecraftForge/ForgeGradle.git'
+                        }
+
+                        issueManagement {
+                            system 'github'
+                            url 'https://github.com/MinecraftForge/ForgeGradle/issues'
+                        }
+
+                        licenses {
+                            license {
+                                name 'Eclipse Public License (EPL), Version 1.0'
+                                url 'http://www.eclipse.org/legal/epl-v10.html'
+                                distribution 'repo'
+                            }
+                        }
+
+                        developers {
+                            developer {
+                                id 'AbrarSyed'
+                                name 'Abrar Syed'
+                                roles { role 'developer' }
+                            }
+                        }
+                        developers {
+                            developer {
+                                id 'LexManos'
+                                name 'Lex Manos'
+                                roles { role 'developer' }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            add project.repositories.mavenLocal()
+        }
+    }
+}

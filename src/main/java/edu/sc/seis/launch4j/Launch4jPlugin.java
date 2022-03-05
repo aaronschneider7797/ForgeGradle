@@ -101,7 +101,8 @@ public class Launch4jPlugin implements Plugin<Project>
                 Launch4jPluginExtension ext = ((Launch4jPluginExtension) task.getProject().getExtensions().getByName(Launch4jPlugin.LAUNCH4J_CONFIGURATION_NAME));
                 
                 task.setCommandLine(ext.getLaunch4jCmd(), project.getBuildDir() + "/" + ext.getOutputDir() + "/" + ext.getXmlFileName());
-                task.setWorkingDir(project.file(ext.getChdir()));
+                File work = new File(ext.getLaunch4jCmd()).getParentFile();
+                task.setWorkingDir(work);
             }
         });
         return task;

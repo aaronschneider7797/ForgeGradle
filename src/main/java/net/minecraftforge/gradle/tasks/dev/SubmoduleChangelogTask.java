@@ -2,36 +2,26 @@ package net.minecraftforge.gradle.tasks.dev;
 
 import groovy.lang.Closure;
 
-import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.Charset;
 
 import net.minecraftforge.gradle.delayed.DelayedFile;
 
 import org.gradle.api.DefaultTask;
-import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.process.ExecSpec;
-
-import com.google.common.io.Files;
 
 public class SubmoduleChangelogTask extends DefaultTask
 {
     private DelayedFile submodule;
-    @Input
-    private String      moduleName;
-    @Input
-    private String      prefix;
+    private String moduleName;
+    private String prefix;
     
-    private File outputFile;
-
     @TaskAction
-    public void doTask() throws IOException
+    public void doTask()
     {
         getLogger().lifecycle("");
-
+        
         String[] output = runGit(getProject().getProjectDir(), "--no-pager", "diff", "--no-color", "--", getSubmodule().getName());
         if (output.length == 0)
         {
@@ -52,7 +42,7 @@ public class SubmoduleChangelogTask extends DefaultTask
                 end = line.substring(19);
                 if (line.endsWith("-dirty"))
                 {
-                    end = end.substring(0, end.length() - 6);
+                    end = end.substring(0, end.length() - 5);
                 }
             }
         }
@@ -61,23 +51,15 @@ public class SubmoduleChangelogTask extends DefaultTask
         {
             getLogger().lifecycle("Could not extract start and end range");
             return;
-        }
+        }        
 
         output = runGit(getSubmodule(), "--no-pager", "log", "--reverse", "--pretty=oneline", start + "..." + end);
         getLogger().lifecycle("Updated " + getModuleName() + ":");
-        
-        BufferedWriter writer = Files.newWriter(outputFile, Charset.defaultCharset());
-        
         for (String line : output)
         {
-            String out = getPrefix() + "@" + line;
-            getLogger().lifecycle(out);
-            writer.write(out);
-            writer.newLine();
+            getLogger().lifecycle(getPrefix() + "@" + line);
         }
-
-        writer.flush();
-        writer.close();
+        
         getLogger().lifecycle("");
     }
 
@@ -91,9 +73,9 @@ public class SubmoduleChangelogTask extends DefaultTask
             @Override
             public ExecSpec call()
             {
-                ExecSpec exec = (ExecSpec) getDelegate();
+                ExecSpec exec = (ExecSpec)getDelegate();
                 exec.setExecutable("git");
-                exec.args((Object[]) args);
+                exec.args((Object[])args);
                 exec.setStandardOutput(out);
                 exec.setWorkingDir(dir);
                 return exec;
@@ -131,15 +113,5 @@ public class SubmoduleChangelogTask extends DefaultTask
     public void setPrefix(String prefix)
     {
         this.prefix = prefix;
-    }
-
-    public File getOutputFile()
-    {
-        return outputFile;
-    }
-
-    public void setOutputFile(File outputFile)
-    {
-        this.outputFile = outputFile;
     }
 }

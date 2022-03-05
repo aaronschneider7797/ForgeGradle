@@ -10,15 +10,12 @@ import java.util.Map;
 import net.minecraftforge.gradle.common.Constants;
 import net.minecraftforge.gradle.delayed.DelayedFile;
 import net.minecraftforge.gradle.patching.ContextualPatch;
-import net.minecraftforge.gradle.patching.ContextualPatch.PatchStatus;
 import net.minecraftforge.gradle.tasks.abstractutil.EditJarTask;
 
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.logging.LogLevel;
-import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 
-import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.io.Files;
 
@@ -26,9 +23,6 @@ public class PatchJarTask extends EditJarTask
 {
     @InputFiles
     private DelayedFile inPatches;
-    
-    @Input
-    private int maxFuzz = 0;
 
     private ContextProvider PROVIDER;
 
@@ -48,7 +42,7 @@ public class PatchJarTask extends EditJarTask
     public void doStuffMiddle() throws Throwable
     {
         getLogger().info("Reading patches");
-        ArrayList<PatchedFile> patches = readPatches(getInPatches());
+        ArrayList<ContextualPatch> patches = readPatches(getInPatches());
 
         boolean fuzzed = false;
 
@@ -56,40 +50,25 @@ public class PatchJarTask extends EditJarTask
 
         Throwable failure = null;
 
-        for (PatchedFile patch : patches)
+        for (ContextualPatch patch : patches)
         {
-            List<ContextualPatch.PatchReport> errors = patch.patch.patch(false);
+            List<ContextualPatch.PatchReport> errors = patch.patch(false);
             for (ContextualPatch.PatchReport report : errors)
             {
                 // catch failed patches
                 if (!report.getStatus().isSuccess())
                 {
-                    File reject = patch.makeRejectFile();
-                    if (reject.exists())
-                    {
-                        reject.delete();
-                    }
                     getLogger().log(LogLevel.ERROR, "Patching failed: " + PROVIDER.strip(report.getTarget()) + " " + report.getFailure().getMessage());
+
                     // now spit the hunks
-                    int failed = 0;
                     for (ContextualPatch.HunkReport hunk : report.getHunks())
                     {
                         // catch the failed hunks
                         if (!hunk.getStatus().isSuccess())
                         {
-                            failed++;
-                            getLogger().error("  " + hunk.getHunkID() + ": " + (hunk.getFailure() != null ? hunk.getFailure().getMessage() : "") + " @ " + hunk.getIndex());
-                            Files.append(String.format("++++ REJECTED PATCH %d\n", hunk.getHunkID()), reject, Charsets.UTF_8);
-                            Files.append(Joiner.on('\n').join(hunk.hunk.lines), reject, Charsets.UTF_8);
-                            Files.append(String.format("\n++++ END PATCH\n"), reject, Charsets.UTF_8);
-                        }
-                        else if (hunk.getStatus() == PatchStatus.Fuzzed)
-                        {
-                            getLogger().info("  " + hunk.getHunkID() + " fuzzed " + hunk.getFuzz() + "!");
+                            getLogger().error("Hunk " + hunk.getHunkID() + " failed! " + (hunk.getFailure() != null ? hunk.getFailure().getMessage() : ""));
                         }
                     }
-                    getLogger().log(LogLevel.ERROR, "  " + failed + "/" + report.getHunks().size() + " failed");
-                    getLogger().log(LogLevel.ERROR, "  Rejects written to " + reject.getAbsolutePath());
 
                     if (failure == null) failure = report.getFailure();
                 }
@@ -105,9 +84,9 @@ public class PatchJarTask extends EditJarTask
                     for (ContextualPatch.HunkReport hunk : report.getHunks())
                     {
                         // catch the failed hunks
-                        if (hunk.getStatus() == PatchStatus.Fuzzed)
+                        if (!hunk.getStatus().isSuccess())
                         {
-                            getLogger().info("  " + hunk.getHunkID() + " fuzzed " + hunk.getFuzz() + "!");
+                            getLogger().info("Hunk " + hunk.getHunkID() + " fuzzed " + hunk.getFuzz()+"!");
                         }
                     }
 
@@ -127,15 +106,15 @@ public class PatchJarTask extends EditJarTask
             getLogger().lifecycle("Patches Fuzzed!");
         }
 
-//        if (failure != null)
-//        {
-//            throw failure;
-//        }
+        if (failure != null)
+        {
+            throw failure;
+        }
     }
 
-    private ArrayList<PatchedFile> readPatches(FileCollection patchFiles) throws IOException
+    private ArrayList<ContextualPatch> readPatches(FileCollection patchFiles) throws IOException
     {
-        ArrayList<PatchedFile> patches = new ArrayList<PatchedFile>();
+        ArrayList<ContextualPatch> patches = new ArrayList<ContextualPatch>();
 
         for (File file : patchFiles.getFiles())
         {
@@ -148,27 +127,12 @@ public class PatchJarTask extends EditJarTask
         return patches;
     }
 
-    public PatchedFile readPatch(File file) throws IOException
+    public ContextualPatch readPatch(File file) throws IOException
     {
         getLogger().debug("Reading patch file: " + file);
-        return new PatchedFile(file);
+        return ContextualPatch.create(Files.toString(file, Charset.defaultCharset()), PROVIDER).setAccessC14N(true).setMaxFuzz(0);
     }
 
-    private class PatchedFile {
-        public final File fileToPatch;
-        public final ContextualPatch patch;
-
-        public PatchedFile(File file) throws IOException
-        {
-            this.fileToPatch = file;
-            this.patch = ContextualPatch.create(Files.toString(file, Charset.defaultCharset()), PROVIDER).setAccessC14N(true).setMaxFuzz(getMaxFuzz());
-        }
-
-        public File makeRejectFile()
-        {
-            return new File(fileToPatch.getParentFile(),fileToPatch.getName()+".rej");
-        }
-    }
     /**
      * A private inner class to be used with the FmlPatches
      */
@@ -243,16 +207,6 @@ public class PatchJarTask extends EditJarTask
     public void doStuffAfter() throws Throwable
     {
         // TODO Auto-generated method stub
-
-    }
-
-    public int getMaxFuzz()
-    {
-        return maxFuzz;
-    }
-
-    public void setMaxFuzz(int maxFuzz)
-    {
-        this.maxFuzz = maxFuzz;
+        
     }
 }

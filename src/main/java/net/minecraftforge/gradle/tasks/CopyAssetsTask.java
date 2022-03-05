@@ -3,10 +3,11 @@ package net.minecraftforge.gradle.tasks;
 import groovy.lang.Closure;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Map.Entry;
 
-import net.minecraftforge.gradle.json.version.AssetIndex;
-import net.minecraftforge.gradle.json.version.AssetIndex.AssetEntry;
+import net.minecraftforge.gradle.common.version.AssetIndex;
+import net.minecraftforge.gradle.common.version.AssetIndex.AssetEntry;
 import net.minecraftforge.gradle.delayed.DelayedFile;
 
 import org.gradle.api.DefaultTask;
@@ -27,38 +28,28 @@ public class CopyAssetsTask extends DefaultTask
     DelayedFile   outputDir;
 
     @TaskAction
-    public void doTask()
+    public void doTask() throws IOException
     {
-        try
+        AssetIndex index = getAssetIndex();
+        File assetsDir = new File(getAssetsDir(), "objects");
+        File outputDir = getOutputDir();
+
+        if (!index.virtual)
+            return; // shrug
+
+        for (Entry<String, AssetEntry> e : index.objects.entrySet())
         {
-            AssetIndex index = getAssetIndex();
-            File assetsDir = new File(getAssetsDir(), "objects");
-            File outputDir = getOutputDir();
+            File in = getHashedPath(assetsDir, e.getValue().hash);
+            File out = new File(outputDir, e.getKey());
 
-            if (!index.virtual)
-                return; // shrug
-
-            for (Entry<String, AssetEntry> e : index.objects.entrySet())
+            // check existing
+            if (out.exists() && out.length() == e.getValue().size)
+                continue;
+            else
             {
-                File in = getHashedPath(assetsDir, e.getValue().hash);
-                File out = new File(outputDir, e.getKey());
-
-                // check existing
-                if (out.exists() && out.length() == e.getValue().size)
-                    continue;
-                else
-                {
-                    out.getParentFile().mkdirs();
-                    Files.copy(in, out);
-                }
+                out.getParentFile().mkdirs();
+                Files.copy(in, out);
             }
-        }
-        catch (Throwable t)
-        {
-            // CRASH!
-            getLogger().error("Something went wrong with the assets copying");
-            this.setDidWork(false);
-            return;
         }
     }
 

@@ -2,19 +2,11 @@ package net.minecraftforge.gradle.tasks.user.reobf;
 
 import groovy.lang.Closure;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedList;
 
-import net.minecraftforge.gradle.common.Constants;
-import net.minecraftforge.gradle.delayed.DelayedFile;
 import net.minecraftforge.gradle.delayed.DelayedThingy;
-import net.minecraftforge.gradle.extrastuff.ReobfExceptor;
-import net.minecraftforge.gradle.user.UserConstants;
-import net.minecraftforge.gradle.user.UserExtension;
 
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
@@ -26,42 +18,14 @@ import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.DefaultDomainObjectSet;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
-import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.InputFile;
-import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.bundling.AbstractArchiveTask;
 
-import com.google.common.io.Files;
-
 public class ReobfTask extends DefaultTask
 {
-    final private DefaultDomainObjectSet<ObfArtifact> obfOutput     = new DefaultDomainObjectSet<ObfArtifact>(ObfArtifact.class);
-
-    @Input
-    private boolean                                   useRetroGuard = false;
-
-    @InputFile
-    private DelayedFile                               srg;
+    final private DefaultDomainObjectSet<ObfArtifact> obfOutput = new DefaultDomainObjectSet<ObfArtifact>(ObfArtifact.class);
     
-    @Optional
-    @InputFile
-    private DelayedFile                               fieldCsv;
-    @Optional
-    @InputFile
-    private DelayedFile                               methodCsv;
-    @Optional
-    @InputFile
-    private DelayedFile                               exceptorCfg;
-    @Optional
-    @InputFile
-    private DelayedFile                               deobfFile;
-    @Optional
-    @InputFile
-    private DelayedFile                               recompFile;
-
-    @Input
-    private LinkedList<String>                        extraSrg      = new LinkedList<String>();
+    private boolean useRG = false;
 
     @SuppressWarnings("serial")
     public ReobfTask()
@@ -82,7 +46,7 @@ public class ReobfTask extends DefaultTask
             }
         });
     }
-
+    
     public void reobf(Task task, Action<ArtifactSpec> artifactSpec)
     {
         reobf(task, new ActionClosure(artifactSpec));
@@ -114,11 +78,11 @@ public class ReobfTask extends DefaultTask
                 throw new InvalidUserDataException("You cannot reobfuscate tasks that are not 'archive' tasks, such as 'jar', 'zip' etc. (you tried to sign $task)");
             }
 
-            dependsOn(task);
-            addArtifact(new ObfArtifact(new DelayedThingy(task), new ArtifactSpec((AbstractArchiveTask) task), this));
+            dependsOn((AbstractArchiveTask) task);
+            addArtifact(new ObfArtifact(new DelayedThingy(task), new ArtifactSpec(getProject()), this));
         }
     }
-
+    
     public void reobf(PublishArtifact art, Action<ArtifactSpec> artifactSpec)
     {
         reobf(art, new ActionClosure(artifactSpec));
@@ -147,7 +111,7 @@ public class ReobfTask extends DefaultTask
             addArtifact(new ObfArtifact(publishArtifact, new ArtifactSpec(publishArtifact, getProject()), this));
         }
     }
-
+    
     public void reobf(File file, Action<ArtifactSpec> artifactSpec)
     {
         reobf(file, new ActionClosure(artifactSpec));
@@ -255,57 +219,10 @@ public class ReobfTask extends DefaultTask
      * @throws Exception 
      */
     @TaskAction
-    public void doTask() throws Exception
+    public void generate() throws Exception
     {
-        // do stuff.
-        ReobfExceptor exc = null;
-        File srg = File.createTempFile("reobf-default", ".srg", getTemporaryDir());
-        File extraSrg = File.createTempFile("reobf-extra", ".srg", getTemporaryDir());;
-
-        UserExtension ext = (UserExtension) getProject().getExtensions().getByName(Constants.EXT_NAME_MC);
-
-        if (ext.isDecomp())
-        {
-            exc = getExceptor();
-            exc.buildSrg(getSrg(), srg);
-        }
-        else
-            Files.copy(getSrg(), srg);
-        
-        // generate extraSrg
-        {
-            if (!extraSrg.exists())
-            {
-                extraSrg.getParentFile().mkdirs();
-                extraSrg.createNewFile();
-            }
-            
-            BufferedWriter writer = new BufferedWriter(new FileWriter(extraSrg));
-            for (String line : getExtraSrg())
-            {
-                writer.write(line);
-                writer.newLine();
-            }
-            writer.flush();
-            writer.close();
-        }
-
         for (ObfArtifact obf : getObfuscated())
-            obf.generate(exc, srg, extraSrg);
-    }
-    
-    private ReobfExceptor getExceptor() throws IOException
-    {
-        ReobfExceptor exc = new ReobfExceptor();
-        exc.deobfJar = getDeobfFile();
-        exc.toReobfJar = getRecompFile();
-        exc.excConfig = getExceptorCfg();
-        exc.fieldCSV = getFieldCsv();
-        exc.methodCSV = getMethodCsv();
-
-        exc.doFirstThings();
-        
-        return exc;
+            obf.generate();
     }
 
     private void addArtifact(ObfArtifact artifact)
@@ -327,45 +244,44 @@ public class ReobfTask extends DefaultTask
     FileCollection getFilesToObfuscate()
     {
         ArrayList<File> collect = new ArrayList<File>();
-
+        
         for (ObfArtifact obf : getObfuscated())
         {
             if (obf != null && obf.getToObf() != null)
                 collect.add(obf.getToObf());
         }
-
+        
         return new SimpleFileCollection(collect.toArray(new File[collect.size()]));
     }
 
     /**
      * All of the signature files that will be generated by this operation.
      */
-    FileCollection getObfuscatedFiles()
-    {
+    FileCollection getObfuscatedFiles() {
         ArrayList<File> collect = new ArrayList<File>();
-
+        
         for (ObfArtifact obf : getObfuscated())
         {
             if (obf != null && obf.getFile() != null)
                 collect.add(obf.getFile());
         }
-
+        
         return new SimpleFileCollection(collect.toArray(new File[collect.size()]));
     }
-
+    
     @SuppressWarnings({ "serial" })
     private class ActionClosure extends Closure<Object>
     {
         @SuppressWarnings("rawtypes")
         private final Action act;
-
+        
         @SuppressWarnings("rawtypes")
         public ActionClosure(Action artifactSpec)
         {
             super(null);
             this.act = artifactSpec;
         }
-
+        
         @SuppressWarnings("unchecked")
         public Object call(Object obj)
         {
@@ -376,102 +292,11 @@ public class ReobfTask extends DefaultTask
 
     public boolean getUseRetroGuard()
     {
-        return useRetroGuard;
+        return useRG;
     }
 
     public void setUseRetroGuard(boolean useRG)
     {
-        this.useRetroGuard = useRG;
+        this.useRG = useRG;
     }
-
-    public File getDeobfFile()
-    {
-        return deobfFile == null ? null : deobfFile.call();
-    }
-
-    public void setDeobfFile(DelayedFile deobfFile)
-    {
-        this.deobfFile = deobfFile;
-    }
-    
-    public File getRecompFile()
-    {
-        return recompFile == null ? null : recompFile.call();
-    }
-
-    public void setRecompFile(DelayedFile recompFile)
-    {
-        this.recompFile = recompFile;
-    }
-
-    public File getExceptorCfg()
-    {
-        return exceptorCfg == null ? null : exceptorCfg.call();
-    }
-
-    public void setExceptorCfg(DelayedFile file)
-    {
-        this.exceptorCfg = file;
-    }
-
-    public LinkedList<String> getExtraSrg()
-    {
-        return extraSrg;
-    }
-
-    public void setExtraSrg(LinkedList<String> extraSrg)
-    {
-        this.extraSrg = extraSrg;
-    }
-
-    public File getSrg()
-    {
-        return srg.call();
-    }
-
-    public void setSrg(DelayedFile srg)
-    {
-        this.srg = srg;
-    }
-    
-    public void setSrg(String srg)
-    {
-        this.srg = new DelayedFile(getProject(), srg);
-    }
-    
-    public void setSrgSrg()
-    {
-        this.srg = new DelayedFile(getProject(), UserConstants.REOBF_SRG);
-    }
-    
-    public void setSrgMcp()
-    {
-        this.srg = new DelayedFile(getProject(), UserConstants.REOBF_NOTCH_SRG);
-    }
-
-    public File getFieldCsv()
-    {
-        return fieldCsv == null ? null : fieldCsv.call();
-    }
-
-    public void setFieldCsv(DelayedFile fieldCsv)
-    {
-        this.fieldCsv = fieldCsv;
-    }
-
-    public File getMethodCsv()
-    {
-        return methodCsv == null ? null : methodCsv.call();
-    }
-
-    public void setMethodCsv(DelayedFile methodCsv)
-    {
-        this.methodCsv = methodCsv;
-    }
-
-    public DefaultDomainObjectSet<ObfArtifact> getObfOutput()
-    {
-        return obfOutput;
-    }
-
 }

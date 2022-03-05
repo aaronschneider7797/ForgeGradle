@@ -11,24 +11,30 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import net.minecraftforge.gradle.StringUtils;
 import net.minecraftforge.gradle.dev.DevExtension;
-import net.minecraftforge.gradle.json.version.OS;
 
 import org.gradle.api.Project;
 
 import argo.jdom.JdomParser;
 
 import com.google.common.base.Joiner;
-import com.google.common.io.ByteStreams;
 
 public class Constants
 {
+    // OS
+    public static enum OperatingSystem
+    {
+        WINDOWS, OSX, LINUX;
+
+        public String toString()
+        {
+            return StringUtils.lower(name());
+        }
+    }
+
     // OS
     public static enum SystemArch
     {
@@ -40,7 +46,7 @@ public class Constants
         }
     }
 
-    public static final OS               OPERATING_SYSTEM = OS.CURRENT;
+    public static final OperatingSystem  OPERATING_SYSTEM = getOs();
     public static final SystemArch       SYSTEM_ARCH      = getArch();
 
     // extension nam
@@ -59,7 +65,6 @@ public class Constants
     public static final String MCP_URL          = "http://files.minecraftforge.net/fernflower_temporary.zip";
     public static final String ASSETS_URL       = "http://resources.download.minecraft.net";
     public static final String LIBRARY_URL      = "https://libraries.minecraft.net/";
-    public static final String FORGE_MAVEN      = "http://files.minecraftforge.net/maven";
     public static final String ASSETS_INDEX_URL = "https://s3.amazonaws.com/Minecraft.Download/indexes/{ASSET_INDEX}.json";
 
     public static final String LOG              = ".gradle/gradle.log";
@@ -72,6 +77,16 @@ public class Constants
     public static final String FERNFLOWER       = "{CACHE_DIR}/minecraft/fernflower.jar";
     public static final String EXCEPTOR         = "{CACHE_DIR}/minecraft/exceptor.jar";
     public static final String ASSETS           = "{CACHE_DIR}/minecraft/assets";
+
+    public static final String DEOBF_JAR              = "{BUILD_DIR}/deobfuscated.jar";
+    public static final String DEOBF_BIN_JAR          = "{BUILD_DIR}/deobfuscated-bin.jar";
+    public static final String DECOMP_JAR             = "{BUILD_DIR}/decompiled.jar";
+    public static final String DECOMP_FMLED           = "{BUILD_DIR}/decompiled-fmled.jar";
+    public static final String DECOMP_FMLINJECTED     = "{BUILD_DIR}/decompiled-fmlinjected.jar";
+    public static final String DECOMP_FORGEJAVADOCCED = "{BUILD_DIR}/decompiled-forged.jar";
+    public static final String DECOMP_FORGED          = "{BUILD_DIR}/decompiled-forged-nojd.jar";
+    public static final String DECOMP_FORGEINJECTED   = "{BUILD_DIR}/decompiled-forgeinjected.jar";
+    public static final String DECOMP_REMAPPED        = "{BUILD_DIR}/decompiled-remapped.jar";
 
     // util
     public static final String NEWLINE = System.getProperty("line.separator");
@@ -110,25 +125,46 @@ public class Constants
         }
         return list;
     }
-    
+
+    private static OperatingSystem getOs()
+    {
+        String name = StringUtils.lower(System.getProperty("os.name"));
+        if (name.contains("windows"))
+        {
+            return OperatingSystem.WINDOWS;
+        }
+        else if (name.contains("mac") || name.contains("osx"))
+        {
+            return OperatingSystem.OSX;
+        }
+        else if (name.contains("linux") || name.contains("unix"))
+        {
+            return OperatingSystem.LINUX;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
     public static File getMinecraftDirectory()
     {
         String userDir = System.getProperty("user.home");
 
         switch (OPERATING_SYSTEM)
-            {
-                case LINUX:
-                    return new File(userDir, ".minecraft/");
-                case WINDOWS:
-                    String appData = System.getenv("APPDATA");
-                    String folder = appData != null ? appData : userDir;
-                    return new File(folder, ".minecraft/");
-                case OSX:
-                    return new File(userDir, "Library/Application Support/minecraft");
-                default:
-                    return new File(userDir, "minecraft/");
-            }
-    }
+        {
+            case LINUX:
+                return new File(userDir, ".minecraft/");
+            case WINDOWS:
+                String appData = System.getenv("APPDATA");
+                String folder = appData != null ? appData : userDir;
+                return new File(folder, ".minecraft/");
+            case OSX:
+                return new File(userDir, "Library/Application Support/minecraft");
+            default:
+                return new File(userDir, "minecraft/");
+        }
+      }
 
     private static SystemArch getArch()
     {
@@ -145,72 +181,32 @@ public class Constants
 
     public static String hash(File file)
     {
-        if (file.getPath().endsWith(".zip") || file.getPath().endsWith(".jar"))
-            return hashZip(file, "MD5");
-        else
-            return hash(file, "MD5");
-    }
-    
-    public static List<String> hashAll(File file)
-    {
-        LinkedList<String> list = new LinkedList<String>();
-        
-        if (file.isDirectory())
-        {
-            for (File f : file.listFiles())
-                hashAll(f);
-        }
-        else
-            list.add(hash(file));
-        
-        return list;
+        return hash(file, "MD5");
     }
 
     public static String hash(File file, String function)
     {
         try
         {
-            MessageDigest hasher = MessageDigest.getInstance(function);
-            
+
             InputStream fis = new FileInputStream(file);
-            hasher.update(ByteStreams.toByteArray(fis));
-            fis.close();
-            
-            byte[] hash = hasher.digest();
 
-            // convert to string
-            String result = "";
-            for (int i = 0; i < hash.length; i++)
-                result += Integer.toString((hash[i] & 0xff) + 0x100, 16).substring(1);
-            return result;
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-        }
+            byte[] buffer = new byte[1024];
+            MessageDigest complete = MessageDigest.getInstance(function);
+            int numRead;
 
-        return null;
-    }
-    
-    public static String hashZip(File file, String function)
-    {
-        try
-        {
-            MessageDigest hasher = MessageDigest.getInstance(function);
-
-            ZipInputStream zin = new ZipInputStream(new FileInputStream(file));
-            ZipEntry entry = null;
-            while ((entry = zin.getNextEntry()) != null)
+            do
             {
-                hasher.update(entry.getName().getBytes());
-                hasher.update(ByteStreams.toByteArray(zin));
-            }
-            zin.close();
-            
-            byte[] hash = hasher.digest();
+                numRead = fis.read(buffer);
+                if (numRead > 0)
+                {
+                    complete.update(buffer, 0, numRead);
+                }
+            } while (numRead != -1);
 
-            
-            // convert to string
+            fis.close();
+            byte[] hash = complete.digest();
+
             String result = "";
 
             for (int i = 0; i < hash.length; i++)

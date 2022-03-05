@@ -1,20 +1,13 @@
 package net.minecraftforge.gradle.tasks;
 
-import static org.objectweb.asm.Opcodes.ACC_FINAL;
-import static org.objectweb.asm.Opcodes.ACC_PRIVATE;
-import static org.objectweb.asm.Opcodes.ACC_PROTECTED;
-import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
-
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -25,44 +18,28 @@ import net.md_5.specialsource.AccessMap;
 import net.md_5.specialsource.Jar;
 import net.md_5.specialsource.JarMapping;
 import net.md_5.specialsource.JarRemapper;
-import net.md_5.specialsource.RemapperProcessor;
+import net.md_5.specialsource.RemapperPreprocessor;
 import net.md_5.specialsource.provider.JarProvider;
 import net.md_5.specialsource.provider.JointProvider;
+import net.minecraftforge.gradle.common.Constants;
 import net.minecraftforge.gradle.delayed.DelayedFile;
-import net.minecraftforge.gradle.json.JsonFactory;
-import net.minecraftforge.gradle.json.MCInjectorStruct;
-import net.minecraftforge.gradle.json.MCInjectorStruct.InnerClass;
 import net.minecraftforge.gradle.tasks.abstractutil.CachedTask;
 
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
-import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
 
-import com.google.common.base.Charsets;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Maps;
 import com.google.common.io.ByteStreams;
-import com.google.common.io.Files;
-import com.google.common.io.LineProcessor;
 
 import de.oceanlabs.mcp.mcinjector.MCInjectorImpl;
 
 public class ProcessJarTask extends CachedTask
 {
-    @InputFile
-    @Optional
-    private DelayedFile            fieldCsv;
-    @InputFile
-    @Optional
-    private DelayedFile            methodCsv;
-
     @InputFile
     private DelayedFile            inJar;
 
@@ -72,28 +49,19 @@ public class ProcessJarTask extends CachedTask
     @InputFile
     private DelayedFile            exceptorCfg;
 
-    @InputFile
-    private DelayedFile exceptorJson;
-
-    @Input
-    private boolean applyMarkers = false;
+    @OutputFile
+    @Cached
+    private DelayedFile            outCleanJar;                                                     // clean = pure forge, or pure FML
 
     @OutputFile
     @Cached
-    private DelayedFile outCleanJar; // clean = pure forge, or pure FML
+    private DelayedFile            outDirtyJar = new DelayedFile(getProject(), Constants.DEOBF_JAR); // dirty = has any other ATs
 
-    @OutputFile
-    @Cached
-    private DelayedFile outDirtyJar = new DelayedFile(getProject(), "{BUILD_DIR}/processed.jar"); // dirty = has any other ATs
-
-    @InputFiles
     private ArrayList<DelayedFile> ats         = new ArrayList<DelayedFile>();
 
-    private DelayedFile log;
+    private boolean                isClean     = true;
 
-    private boolean isClean = true;
-
-    public void addTransformerClean(DelayedFile... obj)
+    public void addTransformer(DelayedFile... obj)
     {
         for (DelayedFile object : obj)
         {
@@ -138,13 +106,9 @@ public class ProcessJarTask extends CachedTask
         getLogger().lifecycle("Applying SpecialSource...");
         deobfJar(getInJar(), tempObfJar, getSrg(), ats);
 
-        File log = getLog();
-        if (log == null)
-            log = new File(getTemporaryDir(), "exceptor.log");
-
         // apply exceptor
         getLogger().lifecycle("Applying Exceptor...");
-        applyExceptor(tempObfJar, tempExcJar, getExceptorCfg(), log, ats);
+        applyExceptor(tempObfJar, tempExcJar, getExceptorCfg(), new File(getTemporaryDir(), "exceptor.log"));
 
         File out = isClean ? getOutCleanJar() : getOutDirtyJar();
 
@@ -160,57 +124,8 @@ public class ProcessJarTask extends CachedTask
         JarMapping mapping = new JarMapping();
         mapping.loadMappings(srg);
 
-        final Map<String, String> renames = Maps.newHashMap();
-        for (File f : new File[]{ getFieldCsv(), getMethodCsv() })
-        {
-            if (f == null) continue;
-            Files.readLines(f, Charsets.UTF_8, new LineProcessor<String>()
-            {
-                @Override
-                public boolean processLine(String line) throws IOException
-                {
-                    String[] pts = line.split(",");
-                    if (!"searge".equals(pts[0]))
-                    {
-                        renames.put(pts[0], pts[1]);
-                    }
-
-                    return true;
-                }
-
-                @Override public String getResult() { return null; }
-            });
-        }
-
         // load in ATs
-        AccessMap accessMap = new AccessMap() {
-            @Override
-            public void addAccessChange(String symbolString, String accessString)
-            {
-                String[] pts = symbolString.split(" ");
-                if (pts.length >= 2)
-                {
-                    int idx = pts[1].indexOf('(');
-
-                    String start = pts[1];
-                    String end = "";
-
-                    if (idx != -1)
-                    {
-                        start = pts[1].substring(0, idx);
-                        end = pts[1].substring(idx);
-                    }
-
-                    String rename = renames.get(start);
-                    if (rename != null)
-                    {
-                        pts[1] = rename + end;
-                    }
-                }
-                String joinedString = Joiner.on('.').join(pts);
-                super.addAccessChange(joinedString, accessString);
-            }
-        };
+        AccessMap accessMap = new AccessMap();
         getLogger().info("Using AccessTransformers...");
         for (File at : ats)
         {
@@ -219,11 +134,10 @@ public class ProcessJarTask extends CachedTask
         }
 
         // make a processor out of the ATS and mappings.
-        RemapperProcessor srgProcessor = new RemapperProcessor(null, mapping, null);
+        RemapperPreprocessor processor = new RemapperPreprocessor(null, mapping, accessMap);
 
-        RemapperProcessor atProcessor = new RemapperProcessor(null, null, accessMap);
         // make remapper
-        JarRemapper remapper = new JarRemapper(srgProcessor, mapping, atProcessor);
+        JarRemapper remapper = new JarRemapper(processor, mapping);
 
         // load jar
         Jar input = Jar.init(inJar);
@@ -237,84 +151,11 @@ public class ProcessJarTask extends CachedTask
         remapper.remapJar(input, outJar);
     }
 
-    private int fixAccess(int access, String target)
+    public void applyExceptor(File inJar, File outJar, File config, File log) throws IOException
     {
-        int ret = access & ~7;
-        int t = 0;
-
-        if      (target.startsWith("public"))    t = ACC_PUBLIC;
-        else if (target.startsWith("private"))   t = ACC_PRIVATE;
-        else if (target.startsWith("protected")) t = ACC_PROTECTED;
-
-        switch (access & 7)
-        {
-            case ACC_PRIVATE:   ret |= t; break;
-            case 0:             ret |= (t != ACC_PRIVATE ? t : 0); break;
-            case ACC_PROTECTED: ret |= (t != ACC_PRIVATE && t != 0 ? t : ACC_PROTECTED); break;
-            case ACC_PUBLIC:    ret |= ACC_PUBLIC; break;
-        }
-
-        if      (target.endsWith("-f")) ret &= ~ACC_FINAL;
-        else if (target.endsWith("+f")) ret |= ACC_FINAL;
-        return ret;
-    }
-
-    public void applyExceptor(File inJar, File outJar, File config, File log, Set<File> ats) throws IOException
-    {
-        String json = null;
-        File getJson = getExceptorJson();
-        if (getJson != null)
-        {
-            final Map<String, MCInjectorStruct> struct = JsonFactory.loadMCIJson(getJson);
-            for (File at : ats)
-            {
-                getLogger().info("loading AT: "+at.getCanonicalPath());
-                
-                Files.readLines(at, Charset.defaultCharset(), new LineProcessor<Object>()
-                {
-                    @Override
-                    public boolean processLine(String line) throws IOException
-                    {
-                        if (line.indexOf('#') != -1) line = line.substring(0, line.indexOf('#'));
-                        line = line.trim().replace('.', '/');
-                        if (line.isEmpty()) return true;
-
-                        String[] s = line.split(" ");
-                        if (s.length == 2 && s[1].indexOf('$') > 0)
-                        {
-                             String parent = s[1].substring(0, s[1].indexOf('$'));
-                             for (MCInjectorStruct cls : new MCInjectorStruct[]{struct.get(parent), struct.get(s[1])})
-                             {
-                                 if (cls != null && cls.innerClasses != null)
-                                 {
-                                     for (InnerClass inner : cls.innerClasses)
-                                     {
-                                         if (inner.inner_class.equals(s[1]))
-                                         {
-                                             int access = fixAccess(inner.getAccess(), s[0]);
-                                             inner.access = (access == 0 ? null : Integer.toHexString(access));
-                                         }
-                                     }
-                                 }
-                             }
-                        }
-
-                        return true;
-                    }
-
-                    @Override public Object getResult() { return null; }
-                });
-            }
-            File jsonTmp = new File(this.getTemporaryDir(), "transformed.json");
-            json = jsonTmp.getCanonicalPath();
-            Files.write(JsonFactory.GSON.toJson(struct).getBytes(), jsonTmp);
-        }
-
         getLogger().debug("INPUT: " + inJar);
         getLogger().debug("OUTPUT: " + outJar);
         getLogger().debug("CONFIG: " + config);
-        getLogger().debug("JSON: " + json);
-        getLogger().debug("LOG: " + log);
 
         MCInjectorImpl.process(inJar.getCanonicalPath(),
                 outJar.getCanonicalPath(),
@@ -322,8 +163,8 @@ public class ProcessJarTask extends CachedTask
                 log.getCanonicalPath(),
                 null,
                 0,
-                json,
-                isApplyMarkers());
+                null,
+                false);
     }
 
     private void injectSourceInfo(File inJar, File outJar) throws IOException
@@ -386,29 +227,6 @@ public class ProcessJarTask extends CachedTask
         this.exceptorCfg = exceptorCfg;
     }
 
-    public File getExceptorJson()
-    {
-        if (exceptorJson == null)
-            return null;
-        else
-            return exceptorJson.call();
-    }
-
-    public void setExceptorJson(DelayedFile exceptorJson)
-    {
-        this.exceptorJson = exceptorJson;
-    }
-    
-    public boolean isApplyMarkers()
-    {
-        return applyMarkers;
-    }
-
-    public void setApplyMarkers(boolean applyMarkers)
-    {
-        this.applyMarkers = applyMarkers;
-    }
-
     public File getInJar()
     {
         return inJar.call();
@@ -417,19 +235,6 @@ public class ProcessJarTask extends CachedTask
     public void setInJar(DelayedFile inJar)
     {
         this.inJar = inJar;
-    }
-
-    public File getLog()
-    {
-        if (log == null)
-            return null;
-        else
-            return log.call();
-    }
-
-    public void setLog(DelayedFile Log)
-    {
-        this.log = Log;
     }
 
     public File getSrg()
@@ -483,29 +288,15 @@ public class ProcessJarTask extends CachedTask
     {
         return isClean ? outCleanJar.call() : outDirtyJar.call();
     }
+    
+    public void setDirty()
+    {
+        isClean = false;
+    }
 
+    @InputFiles
     public FileCollection getAts()
     {
         return getProject().files(ats.toArray());
-    }
-
-    public File getFieldCsv()
-    {
-        return fieldCsv == null ? null : fieldCsv.call();
-    }
-
-    public void setFieldCsv(DelayedFile fieldCsv)
-    {
-        this.fieldCsv = fieldCsv;
-    }
-
-    public File getMethodCsv()
-    {
-        return methodCsv == null ? null : methodCsv.call();
-    }
-
-    public void setMethodCsv(DelayedFile methodCsv)
-    {
-        this.methodCsv = methodCsv;
     }
 }

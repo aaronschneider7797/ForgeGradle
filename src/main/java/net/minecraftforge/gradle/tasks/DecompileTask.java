@@ -1,21 +1,32 @@
 package net.minecraftforge.gradle.tasks;
 
-import groovy.lang.Closure;
+import argo.saj.InvalidSyntaxException;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.Reader;
-import java.io.StringReader;
-import java.io.StringWriter;
-import java.io.Writer;
-import java.lang.reflect.Constructor;
+import com.github.abrarsyed.jastyle.ASFormatter;
+import com.github.abrarsyed.jastyle.OptParser;
+import com.google.common.base.Joiner;
+import com.google.common.io.ByteStreams;
+import com.google.common.io.Files;
+
+import groovy.lang.Closure;
+import net.minecraftforge.gradle.common.Constants;
+import net.minecraftforge.gradle.delayed.DelayedFile;
+import net.minecraftforge.gradle.patching.ContextualPatch;
+import net.minecraftforge.gradle.sourcemanip.FFPatcher;
+import net.minecraftforge.gradle.sourcemanip.FmlCleanup;
+import net.minecraftforge.gradle.sourcemanip.GLConstantFixer;
+import net.minecraftforge.gradle.sourcemanip.McpCleanup;
+import net.minecraftforge.gradle.tasks.abstractutil.CachedTask;
+
+import org.gradle.api.logging.LogLevel;
+import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.TaskAction;
+import org.gradle.process.JavaExecSpec;
+
+import java.io.*;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,40 +34,6 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
-
-import net.minecraftforge.gradle.common.Constants;
-import net.minecraftforge.gradle.delayed.DelayedFile;
-import net.minecraftforge.gradle.extrastuff.FFPatcher;
-import net.minecraftforge.gradle.extrastuff.FmlCleanup;
-import net.minecraftforge.gradle.extrastuff.GLConstantFixer;
-import net.minecraftforge.gradle.extrastuff.McpCleanup;
-import net.minecraftforge.gradle.patching.ContextualPatch;
-import net.minecraftforge.gradle.patching.ContextualPatch.HunkReport;
-import net.minecraftforge.gradle.patching.ContextualPatch.PatchReport;
-import net.minecraftforge.gradle.patching.ContextualPatch.PatchStatus;
-import net.minecraftforge.gradle.tasks.abstractutil.CachedTask;
-
-import org.gradle.api.Action;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.logging.LogLevel;
-import org.gradle.api.tasks.InputFile;
-import org.gradle.api.tasks.InputFiles;
-import org.gradle.api.tasks.OutputFile;
-import org.gradle.api.tasks.TaskAction;
-import org.gradle.internal.io.TextStream;
-import org.gradle.process.JavaExecSpec;
-import org.gradle.internal.io.LineBufferingOutputStream;
-
-import argo.saj.InvalidSyntaxException;
-
-import com.github.abrarsyed.jastyle.ASFormatter;
-import com.github.abrarsyed.jastyle.FileWildcardFilter;
-import com.github.abrarsyed.jastyle.OptParser;
-import com.google.common.base.Joiner;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.io.ByteStreams;
-import com.google.common.io.Files;
 
 public class DecompileTask extends CachedTask
 {
@@ -66,6 +43,7 @@ public class DecompileTask extends CachedTask
     @InputFile
     private DelayedFile fernFlower;
 
+    @InputFile
     private DelayedFile patch;
 
     @InputFile
@@ -97,14 +75,7 @@ public class DecompileTask extends CachedTask
         readJarAndFix(temp);
 
         getLogger().info("Applying MCP patches");
-        if (getPatch().isFile())
-        {
-            applySingleMcpPatch(getPatch());
-        }
-        else
-        {
-            applyPatchDirectory(getPatch());
-        }
+        applyMcpPatches(getPatch());
 
         getLogger().info("Cleaning source");
         applyMcpCleanup(getAstyleConfig());
@@ -125,7 +96,7 @@ public class DecompileTask extends CachedTask
 
                 exec.args(
                         fernFlower.getAbsolutePath(),
-                        "-din=1",
+                        "-din=0",
                         "-rbr=0",
                         "-dgs=1",
                         "-asc=1",
@@ -138,9 +109,8 @@ public class DecompileTask extends CachedTask
                 exec.setWorkingDir(fernFlower.getParentFile());
 
                 exec.classpath(Constants.getClassPath());
-                exec.setStandardOutput(createLogger());
 
-                exec.setMaxHeapSize("512M");
+                exec.setStandardOutput(Constants.getNullStream());
 
                 return exec;
             }
@@ -148,47 +118,6 @@ public class DecompileTask extends CachedTask
             public JavaExecSpec call(Object obj)
             {
                 return call();
-            }
-        });
-    }
-    
-    private OutputStream createLogger()
-    {
-        try
-        {
-            return createLogger110();
-        }
-        catch (Throwable e)
-        {
-            try
-            {
-                Constructor<LineBufferingOutputStream> ctr = LineBufferingOutputStream.class.getConstructor(Action.class); // Gradle 1.8
-                return ctr.newInstance(new Action<String>()
-                {
-                    @Override
-                    public void execute(String arg0)
-                    {
-                        DecompileTask.this.getProject().getLogger().debug(arg0);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                throw new RuntimeException(ex);
-            }
-        }
-    }
-
-    private OutputStream createLogger110() throws Exception
-    {
-        Constructor<LineBufferingOutputStream> ctr = LineBufferingOutputStream.class.getConstructor(TextStream.class); //Gradle 1.10
-        return ctr.newInstance(new TextStream()
-        {
-            @Override public void endOfStream(Throwable arg0){}
-            @Override
-            public void text(String line)
-            {
-                DecompileTask.this.getProject().getLogger().debug(line);
             }
         });
     }
@@ -228,96 +157,60 @@ public class DecompileTask extends CachedTask
         zin.close();
     }
 
-    private void applySingleMcpPatch(File patchFile) throws Throwable
+    private void applyMcpPatches(File patchFile) throws Throwable
     {
         ContextualPatch patch = ContextualPatch.create(Files.toString(patchFile, Charset.defaultCharset()), new ContextProvider(sourceMap));
-        printPatchErrors(patch.patch(false));
-    }
 
-    private void printPatchErrors(List<PatchReport> errors) throws Throwable
-    {
         boolean fuzzed = false;
-        for (PatchReport report : errors)
+
+        List<ContextualPatch.PatchReport> errors = patch.patch(false);
+        for (ContextualPatch.PatchReport report : errors)
         {
+            // catch failed patches
             if (!report.getStatus().isSuccess())
             {
                 getLogger().log(LogLevel.ERROR, "Patching failed: " + report.getTarget(), report.getFailure());
 
-                for (HunkReport hunk : report.getHunks())
+                // now spit the hunks
+                for (ContextualPatch.HunkReport hunk : report.getHunks())
                 {
+                    // catch the failed hunks
                     if (!hunk.getStatus().isSuccess())
                     {
-                        getLogger().error("Hunk " + hunk.getHunkID() + " failed!");
+                        getLogger().error("Hunk "+hunk.getHunkID()+" failed!");
                     }
                 }
 
                 throw report.getFailure();
             }
-            else if (report.getStatus() == PatchStatus.Fuzzed) // catch fuzzed patches
+            // catch fuzzed patches
+            else if (report.getStatus() == ContextualPatch.PatchStatus.Fuzzed)
             {
                 getLogger().log(LogLevel.INFO, "Patching fuzzed: " + report.getTarget(), report.getFailure());
+
+                // set the boolean for later use
                 fuzzed = true;
 
-                for (HunkReport hunk : report.getHunks())
+                // now spit the hunks
+                for (ContextualPatch.HunkReport hunk : report.getHunks())
                 {
+                    // catch the failed hunks
                     if (!hunk.getStatus().isSuccess())
                     {
-                        getLogger().info("Hunk " + hunk.getHunkID() + " fuzzed " + hunk.getFuzz() + "!");
+                        getLogger().info("Hunk "+hunk.getHunkID()+" fuzzed "+hunk.getFuzz()+"!");
                     }
                 }
             }
+
+            // sucesful patches
             else
             {
                 getLogger().info("Patch succeeded: " + report.getTarget());
             }
         }
+
         if (fuzzed)
             getLogger().lifecycle("Patches Fuzzed!");
-    }
-
-    private void applyPatchDirectory(File patchDir) throws Throwable
-    {
-        Multimap<String, File> patches = ArrayListMultimap.create();
-        for (File f : patchDir.listFiles(new FileWildcardFilter("*.patch")))
-        {
-            String base = f.getName();
-            patches.put(base, f);
-            for(File e : patchDir.listFiles(new FileWildcardFilter(base + ".*")))
-            {
-                patches.put(base, e);
-            }
-        }
-
-        for (String key : patches.keySet())
-        {
-            ContextualPatch patch = findPatch(patches.get(key));
-            if (patch == null)
-            {
-                getLogger().lifecycle("Patch not found for set: " + key); //This should never happen, but whatever
-            }
-            else
-            {
-                printPatchErrors(patch.patch(false));
-            }
-        }
-    }
-
-    private ContextualPatch findPatch(Collection<File> files) throws Throwable
-    {
-        ContextualPatch patch = null;
-        for (File f : files)
-        {
-            patch = ContextualPatch.create(Files.toString(f, Charset.defaultCharset()), new ContextProvider(sourceMap));
-            List<PatchReport> errors = patch.patch(true);
-            
-            boolean success = true;
-            for (PatchReport rep : errors)
-            {
-                if (!rep.getStatus().isSuccess()) success = false;
-            }
-            if (success) break;
-        }
-        return patch;
     }
 
     private void applyMcpCleanup(File conf) throws IOException, InvalidSyntaxException
@@ -330,10 +223,8 @@ public class DecompileTask extends CachedTask
         Writer writer;
 
         GLConstantFixer fixer = new GLConstantFixer();
-        ArrayList<String> files = new ArrayList<String>(sourceMap.keySet());
-        Collections.sort(files); // Just to make sure we have the same order.. shouldn't matter on anything but lets be careful.
 
-        for (String file : files)
+        for (String file : sourceMap.keySet())
         {
             String text = sourceMap.get(file);
 
@@ -440,16 +331,6 @@ public class DecompileTask extends CachedTask
     public void setOutJar(DelayedFile outJar)
     {
         this.outJar = outJar;
-    }
-    
-    @InputFiles
-    public FileCollection getPatches()
-    {
-         File patches = patch.call();
-         if (patches.isDirectory())
-             return getProject().fileTree(patches);
-         else
-             return getProject().files(patches);
     }
 
     public File getPatch()

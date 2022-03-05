@@ -31,13 +31,13 @@ public class GenSrgTask extends DefaultTask
     private DelayedFile fieldsCsv;
 
     @OutputFile
-    private DelayedFile notchToMcp;
+    private DelayedFile notchToMcpSrg;
 
     @OutputFile
-    private DelayedFile mcpToSrg;
+    private DelayedFile mcpToSrgSrg;
     
     @OutputFile
-    private DelayedFile mcpToNotch;
+    private DelayedFile mcpToNotchSrg;
     
     @TaskAction
     public void doTask() throws IOException
@@ -60,8 +60,8 @@ public class GenSrgTask extends DefaultTask
         }
         
         
-        File deobfFile = getNotchToMcp();
-        File reobfFile = getMcpToSrg();
+        File deobfFile = getNotchToMcpSrg();
+        File reobfFile = getMcpToSrgSrg();
 
         // verify files...
         if (!deobfFile.exists())
@@ -77,9 +77,9 @@ public class GenSrgTask extends DefaultTask
         
         // create streams
         BufferedReader srgIn = Files.newReader(getInSrg(), Charset.defaultCharset());
-        BufferedWriter notch2Mcp = Files.newWriter(getNotchToMcp(), Charset.defaultCharset());
-        BufferedWriter mcpToSrg = Files.newWriter(getMcpToSrg(), Charset.defaultCharset());
-        BufferedWriter mcpToNotch = Files.newWriter(getMcpToNotch(), Charset.defaultCharset());
+        BufferedWriter notch2Mcp = Files.newWriter(getNotchToMcpSrg(), Charset.defaultCharset());
+        BufferedWriter mcpToSrg = Files.newWriter(getMcpToSrgSrg(), Charset.defaultCharset());
+        BufferedWriter mcpToNotch = Files.newWriter(getMcpToNotchSrg(), Charset.defaultCharset());
         
         // IN
         // notch -> srg
@@ -210,33 +210,33 @@ public class GenSrgTask extends DefaultTask
         this.fieldsCsv = fieldsCsv;
     }
 
-    public File getNotchToMcp()
+    public File getNotchToMcpSrg()
     {
-        return notchToMcp.call();
+        return notchToMcpSrg.call();
     }
 
-    public void setNotchToMcp(DelayedFile deobfSrg)
+    public void setNotchToMcpSrg(DelayedFile deobfSrg)
     {
-        this.notchToMcp = deobfSrg;
+        this.notchToMcpSrg = deobfSrg;
     }
 
-    public File getMcpToSrg()
+    public File getMcpToSrgSrg()
     {
-        return mcpToSrg.call();
+        return mcpToSrgSrg.call();
     }
 
-    public void setMcpToSrg(DelayedFile reobfSrg)
+    public void setMcpToSrgSrg(DelayedFile reobfSrg)
     {
-        this.mcpToSrg = reobfSrg;
+        this.mcpToSrgSrg = reobfSrg;
     }
     
-    public File getMcpToNotch()
+    public File getMcpToNotchSrg()
     {
-        return mcpToNotch.call();
+        return mcpToNotchSrg.call();
     }
 
-    public void setMcpToNotch(DelayedFile reobfSrg)
+    public void setMcpToNotchSrg(DelayedFile reobfSrg)
     {
-        this.mcpToNotch = reobfSrg;
+        this.mcpToNotchSrg = reobfSrg;
     }
 }

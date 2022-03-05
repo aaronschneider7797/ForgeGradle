@@ -22,9 +22,8 @@ public class UserExtension extends BaseExtension
     
     private String apiVersion;
     private ArrayList<Object> ats = new ArrayList<Object>();
-    private HashMap<String, Object> replacements = new HashMap<String, Object>();
+    private HashMap<String, String> replacements = new HashMap<String, String>();
     private ArrayList<String> includes = new ArrayList<String>();
-    protected boolean isDecomp = false;
     
     public UserExtension(Project project)
     {
@@ -54,7 +53,7 @@ public class UserExtension extends BaseExtension
     
     public void replace(Object token, Object replacement)
     {
-        replacements.put(token.toString(), replacement);
+        replacements.put(token.toString(), replacement.toString());
     }
     
     public void replace(Map<Object, Object> map)
@@ -65,7 +64,7 @@ public class UserExtension extends BaseExtension
         }
     }
     
-    public Map<String, Object> getReplacements()
+    public Map<String, String> getReplacements()
     {
         return replacements;
     }
@@ -90,8 +89,9 @@ public class UserExtension extends BaseExtension
         version = matcher.group(1);
         apiVersion = matcher.group(0);
         
-        if (!version.equals("1.7.2"))
-            throw new  IllegalArgumentException("ForgeGradle 1.1 will only work for Minecraft 1.7.2");
+        // to stop some derps with ForgeGradle versions
+        if (!version.startsWith("1.6"))
+            throw new IllegalArgumentException("This version of ForgeGradle only works with Minecraft 1.6.4!");
     }
 
     public String getApiVersion()
@@ -100,10 +100,5 @@ public class UserExtension extends BaseExtension
             throw new ProjectConfigurationException("You must set the Minecraft Version!", new NullPointerException());
         
         return apiVersion;
-    }
-
-    public boolean isDecomp()
-    {
-        return isDecomp;
     }
 }

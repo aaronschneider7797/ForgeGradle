@@ -5,13 +5,10 @@ import groovy.lang.Closure;
 import java.io.File;
 
 import joptsimple.internal.Strings;
-import net.minecraftforge.gradle.delayed.DelayedFile;
-import net.minecraftforge.gradle.user.UserConstants;
 
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.tasks.bundling.AbstractArchiveTask;
 import org.gradle.api.Project;
-
 import com.google.common.io.Files;
 
 public class ArtifactSpec
@@ -23,8 +20,6 @@ public class ArtifactSpec
     private Object  extension;
     private Object  archiveName;
     private Object  classpath;
-    
-    protected Object  srg = null;
 
     private Project project;
 
@@ -66,7 +61,6 @@ public class ArtifactSpec
         version = new Closure(null) { public Object call() {return task.getVersion();} };
         classifier = new Closure(null) { public Object call() {return task.getClassifier();} };
         extension = new Closure(null) { public Object call() {return task.getExtension();} };
-        archiveName = new Closure(null) { public Object call() {return task.getArchiveName();} };
         classpath = new Closure(null) { public Object call() {return task.getSource();} };
     }
 
@@ -152,53 +146,24 @@ public class ArtifactSpec
         this.archiveName = archiveName;
         archiveSet = true;
     }
-    
-    public Object getSrg()
-    {
-        return srg;
-    }
-    
-    public void setSrg(Object srg)
-    {
-        this.srg = srg;
-    }
-    
-    public void setSrgSrg()
-    {
-        this.srg = new DelayedFile(project, UserConstants.REOBF_SRG);
-    }
-    
-    public void setSrgMcp()
-    {
-        this.srg = new DelayedFile(project, UserConstants.REOBF_NOTCH_SRG);
-    }
 
     protected void resolve()
     {
 
         // resolve fields
-        baseName = resolveString(baseName);
-        appendix = resolveString(appendix);
-        version = resolveString(version);
-        classifier = resolveString(classifier);
-        extension = resolveString(extension);
-        srg = resolveFile(srg);
+        baseName = resolve(baseName, true);
+        appendix = resolve(appendix, true);
+        version = resolve(version, true);
+        classifier = resolve(classifier, true);
+        extension = resolve(extension, true);
 
         // resolve classpath
         if (classpath != null)
             classpath = project.files(classpath);
 
         // skip if its already been set by the user.
-        if (archiveSet && archiveName != null)
+        if (archiveSet)
             return;
-        else
-        {
-            archiveName = resolveString(archiveName);
-            if (archiveName != null) // the jar set it.. we dont need to reset this stuff.
-            {
-                return;
-            }
-        }
 
         StringBuilder builder = new StringBuilder();
         builder.append(baseName);
@@ -228,21 +193,17 @@ public class ArtifactSpec
     }
 
     @SuppressWarnings("unchecked")
-    private Object resolveString(Object obj)
+    private Object resolve(Object obj, boolean isString)
     {
+        if (obj instanceof Closure)
+            obj = ((Closure<Object>) obj).call();
+        
         if (obj == null)
             return null;
-        else if (obj instanceof Closure)
-            return resolveString(((Closure<Object>) obj).call());
-        else
-            return obj.toString();
-    }
-    
-    private Object resolveFile(Object obj)
-    {
-        if (obj == null)
-            return null;
-        else
-            return project.file(obj);
+
+        if (isString)
+            obj = obj.toString();
+
+        return obj;
     }
 }

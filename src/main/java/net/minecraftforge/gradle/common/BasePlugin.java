@@ -7,14 +7,13 @@ import java.io.IOException;
 import java.util.HashMap;
 
 import net.minecraftforge.gradle.FileLogListenner;
-import net.minecraftforge.gradle.delayed.DelayedAlternatorFile;
+import net.minecraftforge.gradle.common.version.AssetIndex;
+import net.minecraftforge.gradle.common.version.Version;
+import net.minecraftforge.gradle.common.version.json.JsonFactory;
 import net.minecraftforge.gradle.delayed.DelayedBase.IDelayedResolver;
 import net.minecraftforge.gradle.delayed.DelayedFile;
 import net.minecraftforge.gradle.delayed.DelayedFileTree;
 import net.minecraftforge.gradle.delayed.DelayedString;
-import net.minecraftforge.gradle.json.JsonFactory;
-import net.minecraftforge.gradle.json.version.AssetIndex;
-import net.minecraftforge.gradle.json.version.Version;
 import net.minecraftforge.gradle.tasks.DownloadAssetsTask;
 import net.minecraftforge.gradle.tasks.ObtainFernFlowerTask;
 import net.minecraftforge.gradle.tasks.abstractutil.DownloadTask;
@@ -24,7 +23,6 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 import org.gradle.api.tasks.Delete;
 import org.gradle.testfixtures.ProjectBuilder;
@@ -43,12 +41,12 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
     public final void apply(Project arg)
     {
         project = arg;
-
+        
         // logging
-        FileLogListenner listener = new FileLogListenner(project.file(Constants.LOG));
-        project.getLogging().addStandardOutputListener(listener);
-        project.getLogging().addStandardErrorListener(listener);
-        project.getGradle().addBuildListener(listener);
+        FileLogListenner listenner = new FileLogListenner(project.file(Constants.LOG));
+        project.getLogging().addStandardOutputListener(listenner);
+        project.getLogging().addStandardErrorListener(listenner);
+        project.getGradle().addBuildListener(listenner);
 
         if (project.getBuildDir().getAbsolutePath().contains("!"))
         {
@@ -62,9 +60,10 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 
         // repos
         project.allprojects(new Action<Project>() {
+            @Override
             public void execute(Project proj)
             {
-                addMavenRepo(proj, "forge", Constants.FORGE_MAVEN);
+                addMavenRepo(proj, "forge", "http://files.minecraftforge.net/maven");
                 proj.getRepositories().mavenCentral();
                 addMavenRepo(proj, "minecraft", Constants.LIBRARY_URL);
             }
@@ -76,7 +75,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
             public void execute(Project project)
             {
                 afterEvaluate();
-
+                
                 try
                 {
                     if (version != null)
@@ -90,7 +89,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
                 {
                     Throwables.propagate(e);
                 }
-
+                
                 finalCall();
             }
         });
@@ -121,10 +120,8 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         project.getLogger().lifecycle("****************************");
         displayBanner = false;
     }
-
-    public void finalCall()
-    {
-    }
+    
+    public void finalCall() {}
 
     @SuppressWarnings("serial")
     private void makeObtainTasks()
@@ -149,7 +146,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
             mcpTask.setMcpUrl(delayedString(Constants.MCP_URL));
             mcpTask.setFfJar(delayedFile(Constants.FERNFLOWER));
         }
-
+        
         DownloadTask getAssetsIndex = makeTask("getAssetsIndex", DownloadTask.class);
         {
             getAssetsIndex.setUrl(delayedString(Constants.ASSETS_INDEX_URL));
@@ -169,8 +166,8 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
                     }
                 }
             });
-
-            getAssetsIndex.getOutputs().upToDateWhen(new Closure<Boolean>(this, null) {
+            
+            getAssetsIndex.getOutputs().upToDateWhen(new Closure<Boolean>(this, null)  {
                 public Boolean call(Object... obj)
                 {
                     return false;
@@ -188,8 +185,6 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         Delete clearCache = makeTask("cleanCache", Delete.class);
         {
             clearCache.delete(delayedFile("{CACHE_DIR}/minecraft"));
-            clearCache.setGroup("ForgeGradle");
-            clearCache.setDescription("Cleares the ForgeGradle cache. DONT RUN THIS unless you want a fresh start, or the dev tells you to.");
         }
     }
 
@@ -291,26 +286,14 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         project.apply(map);
     }
 
-    public MavenArtifactRepository addMavenRepo(Project proj, final String name, final String url)
+    public void addMavenRepo(Project proj, final String name, final String url)
     {
-        return proj.getRepositories().maven(new Action<MavenArtifactRepository>() {
+        proj.getRepositories().maven(new Action<MavenArtifactRepository>() {
             @Override
             public void execute(MavenArtifactRepository repo)
             {
                 repo.setName(name);
                 repo.setUrl(url);
-            }
-        });
-    }
-
-    public FlatDirectoryArtifactRepository addFlatRepo(Project proj, final String name, final Object... dirs)
-    {
-        return proj.getRepositories().flatDir(new Action<FlatDirectoryArtifactRepository>() {
-            @Override
-            public void execute(FlatDirectoryArtifactRepository repo)
-            {
-                repo.setName(name);
-                repo.dirs(dirs);
             }
         });
     }
@@ -331,14 +314,6 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
     protected DelayedFile delayedFile(String path)
     {
         return new DelayedFile(project, path, this);
-    }
-
-    protected DelayedAlternatorFile delayedFile(String path, String... alternates)
-    {
-        DelayedAlternatorFile delayed = new DelayedAlternatorFile(project, path, this);
-        for (String pat : alternates)
-            delayed.add(pat);
-        return delayed;
     }
 
     protected DelayedFileTree delayedFileTree(String path)

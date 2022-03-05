@@ -1,5 +1,6 @@
 package net.minecraftforge.gradle.tasks.dev;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -20,7 +21,6 @@ import net.md_5.specialsource.provider.JarProvider;
 import net.md_5.specialsource.provider.JointProvider;
 import net.minecraftforge.gradle.delayed.DelayedFile;
 import net.minecraftforge.gradle.dev.FmlDevPlugin;
-import net.minecraftforge.gradle.extrastuff.ReobfExceptor;
 
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
@@ -36,13 +36,9 @@ public class ObfuscateTask extends DefaultTask
     private DelayedFile outJar;
     private DelayedFile preFFJar;
     private DelayedFile srg;
-    private DelayedFile exc;
     private boolean     reverse;
     private DelayedFile buildFile;
     private LinkedList<Action<Project>> configureProject = new LinkedList<Action<Project>>();
-    private DelayedFile methodsCsv;
-    private DelayedFile fieldsCsv;
-    private String subTask = "jar";
     private LinkedList<String> extraSrg = new LinkedList<String>();
 
     @TaskAction
@@ -57,47 +53,38 @@ public class ObfuscateTask extends DefaultTask
         }
         
         AbstractTask compileTask = (AbstractTask) childProj.getTasks().getByName("compileJava");
-        AbstractTask jarTask = (AbstractTask) childProj.getTasks().getByName(subTask);
+        AbstractTask jarTask = (AbstractTask) childProj.getTasks().getByName("jar");
 
         // executing jar task
-        getLogger().debug("Executing child "+subTask+" task...");
+        getLogger().debug("Executing child Jar task...");
         executeTask(jarTask);
         
-        File inJar = (File)jarTask.property("archivePath");
-
-        File srg = getSrg();
-
-        if (getExc() != null)
-        {
-            ReobfExceptor exceptor = new ReobfExceptor();
-            exceptor.toReobfJar = inJar;
-            exceptor.deobfJar = getPreFFJar();
-            exceptor.excConfig = getExc();
-            exceptor.fieldCSV = getFieldsCsv();
-            exceptor.methodCSV = getMethodsCsv();
-            
-            File outSrg =  new File(this.getTemporaryDir(), "reobf_cls.srg");
-            
-            exceptor.doFirstThings();
-            exceptor.buildSrg(srg, outSrg);
-            
-            srg = outSrg;
-        }
+        // copy srg
+        File tempSrg = File.createTempFile("obf", ".srg", this.getTemporaryDir());
         
         // append SRG
-        BufferedWriter writer = new BufferedWriter(new FileWriter(srg, true));
-        for (String line : extraSrg)
+        BufferedWriter writer = Files.newWriter(tempSrg, Charset.defaultCharset());
+        BufferedReader reader = Files.newReader(getSrg(), Charset.defaultCharset());
+        for (String line1 : extraSrg)
+        {
+            writer.write(line1);
+            writer.newLine();
+        }
+        String line;
+        while ((line = reader.readLine()) != null)
         {
             writer.write(line);
             writer.newLine();
         }
+        reader.close();
         writer.flush();
         writer.close();
+        
 
         getLogger().debug("Obfuscating jar...");
-        obfuscate(inJar, (FileCollection)compileTask.property("classpath"), srg);
+        obfuscate((File)jarTask.property("archivePath"),tempSrg,  (FileCollection)compileTask.property("classpath"));
     }
-
+    
     private void executeTask(AbstractTask task)
     {
         for (Object dep : task.getTaskDependencies().getDependencies(task))
@@ -112,7 +99,7 @@ public class ObfuscateTask extends DefaultTask
         }
     }
 
-    private void obfuscate(File inJar, FileCollection classpath, File srg) throws FileNotFoundException, IOException
+    private void obfuscate(File inJar, File srg, FileCollection classpath) throws FileNotFoundException, IOException
     {
         // load mapping
         JarMapping mapping = new JarMapping();
@@ -132,7 +119,7 @@ public class ObfuscateTask extends DefaultTask
             inheritanceProviders.add(new ClassLoaderProvider(new URLClassLoader(toUrls(classpath))));
 
         mapping.setFallbackInheritanceProvider(inheritanceProviders);
-
+        
         File out = getOutJar();
         if (!out.getParentFile().exists()) //Needed because SS doesn't create it.
         {
@@ -142,14 +129,14 @@ public class ObfuscateTask extends DefaultTask
         // remap jar
         remapper.remapJar(input, getOutJar());
     }
-
+    
     public static URL[] toUrls(FileCollection collection) throws MalformedURLException
     {
         ArrayList<URL> urls = new ArrayList<URL>();
-
+        
         for (File file : collection.getFiles())
             urls.add(file.toURI().toURL());
-
+        
         return urls.toArray(new URL[urls.size()]);
     }
 
@@ -183,16 +170,6 @@ public class ObfuscateTask extends DefaultTask
         this.srg = srg;
     }
 
-    public File getExc()
-    {
-        return exc.call();
-    }
-
-    public void setExc(DelayedFile exc)
-    {
-        this.exc = exc;
-    }
-
     public boolean isReverse()
     {
         return reverse;
@@ -202,43 +179,12 @@ public class ObfuscateTask extends DefaultTask
     {
         this.reverse = reverse;
     }
-
-    public File getBuildFile()
-    {
-        return buildFile.call();
-    }
-
-    public void setBuildFile(DelayedFile buildFile)
-    {
-        this.buildFile = buildFile;
-    }
-
-
-    public File getMethodsCsv()
-    {
-        return methodsCsv.call();
-    }
-
-    public void setMethodsCsv(DelayedFile methodsCsv)
-    {
-        this.methodsCsv = methodsCsv;
-    }
-
-    public File getFieldsCsv()
-    {
-        return fieldsCsv.call();
-    }
-
-    public void setFieldsCsv(DelayedFile fieldsCsv)
-    {
-        this.fieldsCsv = fieldsCsv;
-    }
     
     public void configureProject(Action<Project> action)
     {
         configureProject.add(action);
     }
-
+    
     public LinkedList<String> getExtraSrg()
     {
         return extraSrg;
@@ -249,13 +195,13 @@ public class ObfuscateTask extends DefaultTask
         this.extraSrg = extraSrg;
     }
 
-    public String getSubTask()
+    public File getBuildFile()
     {
-        return subTask;
+        return buildFile.call();
     }
 
-    public void setSubTask(String subTask)
+    public void setBuildFile(DelayedFile buildFile)
     {
-        this.subTask = subTask;
+        this.buildFile = buildFile;
     }
 }

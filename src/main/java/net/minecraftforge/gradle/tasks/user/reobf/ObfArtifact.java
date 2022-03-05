@@ -16,9 +16,10 @@ import net.md_5.specialsource.provider.JarProvider;
 import net.md_5.specialsource.provider.JointProvider;
 import net.minecraftforge.gradle.common.BasePlugin;
 import net.minecraftforge.gradle.common.Constants;
+import net.minecraftforge.gradle.delayed.DelayedFile;
 import net.minecraftforge.gradle.delayed.DelayedThingy;
-import net.minecraftforge.gradle.extrastuff.ReobfExceptor;
 import net.minecraftforge.gradle.tasks.dev.ObfuscateTask;
+import net.minecraftforge.gradle.user.UserConstants;
 
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.PublishArtifact;
@@ -46,7 +47,7 @@ public class ObfArtifact extends AbstractPublishArtifact
     private final Closure<Object> toObfGenerator;
     private final ReobfTask       caller;
 
-    final ArtifactSpec            spec;
+    final ArtifactSpec            outputSpec;
 
     /**
      * Creates an obfuscated artifact for the given public artifact.
@@ -110,7 +111,7 @@ public class ObfArtifact extends AbstractPublishArtifact
         super(task);
         this.caller = task;
         toObfGenerator = toObf;
-        this.spec = outputSpec;
+        this.outputSpec = outputSpec;
     }
 
     /**
@@ -143,8 +144,8 @@ public class ObfArtifact extends AbstractPublishArtifact
             return name;
         else if (toObfArtifact != null)
             return ((File) toObfArtifact).getName();
-        else if (spec.getBaseName() != null)
-            return spec.getBaseName().toString();
+        else if (outputSpec.getBaseName() != null)
+            return outputSpec.getBaseName().toString();
         else
             return getFile() == null ? null : getFile().getName();
     }
@@ -159,8 +160,8 @@ public class ObfArtifact extends AbstractPublishArtifact
     {
         if (classpath != null)
             return classpath;
-        else if (spec.getClasspath() != null)
-            return (FileCollection) spec.getClasspath();
+        else if (outputSpec.getClasspath() != null)
+            return (FileCollection) outputSpec.getClasspath();
         else
             return null;
     }
@@ -178,8 +179,8 @@ public class ObfArtifact extends AbstractPublishArtifact
             return extension;
         else if (toObfArtifact != null)
             return ((PublishArtifact) toObfArtifact).getExtension();
-        else if (spec.getExtension() != null)
-            return spec.getExtension().toString();
+        else if (outputSpec.getExtension() != null)
+            return outputSpec.getExtension().toString();
         else
             return Files.getFileExtension(getFile() == null ? null : getFile().getName());
     }
@@ -207,8 +208,8 @@ public class ObfArtifact extends AbstractPublishArtifact
             return classifier;
         else if (toObfArtifact != null)
             return ((PublishArtifact) toObfArtifact).getClassifier();
-        else if (spec.getClassifier() != null)
-            return spec.getClassifier().toString();
+        else if (outputSpec.getClassifier() != null)
+            return outputSpec.getClassifier().toString();
         else
             return null;
     }
@@ -253,13 +254,13 @@ public class ObfArtifact extends AbstractPublishArtifact
         {
             File input = getToObf();
 
-            spec.resolve();
-            this.name = spec.getArchiveName().toString();
-            this.classifier = spec.getClassifier().toString();
-            this.extension = spec.getExtension().toString();
-            this.classpath = (FileCollection) spec.getClasspath();
+            outputSpec.resolve();
+            this.name = outputSpec.getArchiveName().toString();
+            this.classifier = outputSpec.getClassifier().toString();
+            this.extension = outputSpec.getExtension().toString();
+            this.classpath = (FileCollection) outputSpec.getClasspath();
 
-            file = new File(input.getParentFile(), spec.getArchiveName().toString());
+            file = new File(input.getParentFile(), outputSpec.getArchiveName().toString());
             return file;
         }
         else
@@ -303,7 +304,7 @@ public class ObfArtifact extends AbstractPublishArtifact
      * @throws IOException
      * @throws org.gradle.api.InvalidUserDataException if the there is insufficient information available to generate the signature.
      */
-    void generate(ReobfExceptor exc, File defaultSrg, File extraSrg) throws Exception
+    void generate() throws Exception
     {
         File toObf = getToObf();
         if (toObf == null)
@@ -311,44 +312,26 @@ public class ObfArtifact extends AbstractPublishArtifact
             throw new InvalidUserDataException("Unable to obfuscate as the file to obfuscate has not been specified");
         }
 
-        // ready artifacts
         File output = getFile();
-        File toObfTemp = File.createTempFile("reobfed", ".jar", caller.getTemporaryDir());
-        Files.copy(toObf, toObfTemp);
+        File srg = new DelayedFile(caller.getProject(), UserConstants.REOBF_SRG).call();
 
-        // ready Srg
-        File srg = (File) (spec.srg == null ? defaultSrg : spec.srg);
-        boolean isTempSrg = false;
-        if (exc != null && srg != defaultSrg) // defualt SRG is already passed through this.
-        {
-            File tempSrg = File.createTempFile("reobf", ".srg", caller.getTemporaryDir());
-            isTempSrg = true;
-            
-            exc.buildSrg(srg, tempSrg);
-            srg = tempSrg;
-            
-        }
+        // obfuscate here
+        File inTemp = File.createTempFile("JarIn", ".jar", caller.getTemporaryDir());
+        Files.copy(toObf, inTemp);
         
-        // obfuscate!
         if (caller.getUseRetroGuard())
-            applyRetroGuard(toObfTemp, output, srg, extraSrg);
+            applyRetroGuard(inTemp, output, srg);
         else
-            applySpecialSource(toObfTemp, output, srg, extraSrg);
-
-        // delete temporary files
-        toObfTemp.delete();
-        if (isTempSrg)
-            srg.delete();
+            applySpecialSource(inTemp, output, srg);
         
         System.gc(); // clean anything out.. I hope..
     }
     
-    private void applySpecialSource(File input, File output, File srg, File extraSrg) throws IOException
+    private void applySpecialSource(File input, File output, File srg) throws IOException
     {
         // load mapping
         JarMapping mapping = new JarMapping();
         mapping.loadMappings(srg);
-        mapping.loadMappings(extraSrg);
 
         // make remapper
         JarRemapper remapper = new JarRemapper(null, mapping);
@@ -368,13 +351,13 @@ public class ObfArtifact extends AbstractPublishArtifact
     }
     
     @SuppressWarnings({ "rawtypes", "unchecked", "static-access" })
-    private void applyRetroGuard(File input, File output, File srg, File extraSrg) throws Exception
+    private void applyRetroGuard(File input, File output, File srg) throws Exception
     {
         File cfg =    new File(caller.getTemporaryDir(), "retroguard.cfg");
         File log =    new File(caller.getTemporaryDir(), "retroguard.log");
         File script = new File(caller.getTemporaryDir(), "retroguard.script");
         
-        generateRgConfig(cfg, script, srg, extraSrg);
+        generateRgConfig(cfg, script, srg);
         
         String[] args = new String[] {
                 "-notch",
@@ -386,6 +369,9 @@ public class ObfArtifact extends AbstractPublishArtifact
         if (classpath != null)
         {
             loader = new URLClassLoader(ObfuscateTask.toUrls(classpath), BasePlugin.class.getClassLoader());
+            caller.getLogger().debug("Reobf classpath ----- ");
+            for (File f : classpath.getFiles())
+                caller.getLogger().debug(""+f);
         }
         
         // the name provider
@@ -399,17 +385,26 @@ public class ObfArtifact extends AbstractPublishArtifact
         loader = null; // if we are lucky.. this will be dropped...
     }
     
-    private void generateRgConfig(File config, File script, File srg, File extraSrg) throws IOException
+    private void generateRgConfig(File config, File script, File srg) throws IOException
     {
         // the config
         String[] lines = new String[] {
-                "reob = "+srg.getCanonicalPath(),
-                "reob = "+extraSrg.getCanonicalPath(), // because it should work...
+                "reobf = "+srg.getCanonicalPath(),
                 "script = "+script.getCanonicalPath(),
                 "verbose = 0",
                 "quiet = 1",
                 "fullmap = 0",
                 "startindex = 0",
+                "protectedpackage = paulscode",
+                "protectedpackage = com",
+                "protectedpackage = isom",
+                "protectedpackage = ibxm",
+                "protectedpackage = de/matthiasmann/twl",
+                "protectedpackage = org",
+                "protectedpackage = javax",
+                "protectedpackage = argo",
+                "protectedpackage = gnu",
+                "protectedpackage = io/netty"
         };
         
         Files.write(Joiner.on(Constants.NEWLINE).join(lines), config, Charset.defaultCharset());
